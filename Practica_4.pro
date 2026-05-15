@@ -11,3 +11,6 @@ SOURCES += \
 HEADERS += \
     Enrutador.h \
     Red.h
+
+DISTFILES += \
+    topologia.txt
