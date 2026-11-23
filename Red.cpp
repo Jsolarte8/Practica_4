@@ -7,6 +7,9 @@
 #include <random>
 #include <stdexcept>
 #include <utility>
+#include <random>
+#include <stdexcept>
+#include <utility>
 
 using namespace std;
 
@@ -126,6 +129,7 @@ map<string, int> Red::calcularDistanciasDesde(
 
             if (distancias[actual] != INT_MAX &&
                 costoEnlace <= INT_MAX - distancias[actual] &&
+                costoEnlace < INT_MAX - distancias[actual] &&
                 distancias[actual] + costoEnlace < distancias[destino]) {
 
                 distancias[destino] = distancias[actual] + costoEnlace;
@@ -326,100 +330,71 @@ void Red::calcularRutasDesde(const string& origen) const {
 
 void Red::cargarDesdeArchivo(const string& nombreArchivo) {
     ifstream archivo(nombreArchivo);
-    if (!archivo.is_open()) {
-        throw runtime_error("No se pudo abrir el archivo de topologia.");
-    }
-
-    // Preparar la nueva topologia sin modificar la red actual si falla la lectura.
-    Red nuevaRed;
+    if (!archivo.is_open()) throw runtime_error("No se pudo abrir el archivo de topologia.");
+    Red nueva;
     string linea;
-    int numeroLinea = 0;
-
+    int numero = 0;
     while (getline(archivo, linea)) {
-        ++numeroLinea;
+        ++numero;
         stringstream ss(linea);
         string tipo;
-        if (!(ss >> tipo) || tipo[0] == '#') {
-            continue;
-        }
-
+        if (!(ss >> tipo) || tipo[0] == '#') continue;
         if (tipo == "ROUTER") {
             string nombre, extra;
-            if (!(ss >> nombre) || (ss >> extra)) {
-                throw invalid_argument("ROUTER invalido en linea " + to_string(numeroLinea));
-            }
-            if (!nuevaRed.existeEnrutador(nombre)) {
-                nuevaRed.enrutadores.emplace(nombre, Enrutador(nombre));
-            }
+            if (!(ss >> nombre) || (ss >> extra))
+                throw invalid_argument("ROUTER invalido en linea " + to_string(numero));
+            if (!nueva.existeEnrutador(nombre))
+                nueva.enrutadores.emplace(nombre, Enrutador(nombre));
         } else if (tipo == "ENLACE") {
             string origen, destino, extra;
             int costo;
-            if (!(ss >> origen >> destino >> costo) || (ss >> extra)) {
-                throw invalid_argument("ENLACE invalido en linea " + to_string(numeroLinea));
-            }
-            if (origen == destino || costo < 0 || costo == INT_MAX) {
-                throw invalid_argument("Enlace o costo invalido en linea " + to_string(numeroLinea));
-            }
-            if (!nuevaRed.existeEnrutador(origen)) {
-                nuevaRed.enrutadores.emplace(origen, Enrutador(origen));
-            }
-            if (!nuevaRed.existeEnrutador(destino)) {
-                nuevaRed.enrutadores.emplace(destino, Enrutador(destino));
-            }
-            nuevaRed.enrutadores.at(origen).agregarVecino(destino, costo);
-            nuevaRed.enrutadores.at(destino).agregarVecino(origen, costo);
+            if (!(ss >> origen >> destino >> costo) || (ss >> extra))
+                throw invalid_argument("ENLACE invalido en linea " + to_string(numero));
+            if (origen == destino || costo < 0 || costo == INT_MAX)
+                throw invalid_argument("Enlace o costo invalido en linea " + to_string(numero));
+            if (!nueva.existeEnrutador(origen))
+                nueva.enrutadores.emplace(origen, Enrutador(origen));
+            if (!nueva.existeEnrutador(destino))
+                nueva.enrutadores.emplace(destino, Enrutador(destino));
+            nueva.enrutadores.at(origen).agregarVecino(destino, costo);
+            nueva.enrutadores.at(destino).agregarVecino(origen, costo);
         } else {
-            throw invalid_argument("Tipo desconocido en linea " + to_string(numeroLinea) + ": " + tipo);
+            throw invalid_argument("Tipo desconocido en linea " + to_string(numero));
         }
     }
-
-    if (archivo.bad()) {
-        throw runtime_error("Error de lectura del archivo de topologia.");
-    }
-
-    nuevaRed.actualizarTablas();
-    enrutadores.swap(nuevaRed.enrutadores);
+    if (archivo.bad()) throw runtime_error("Error leyendo topologia.");
+    nueva.actualizarTablas();
+    enrutadores.swap(nueva.enrutadores);
 }
 
 void Red::generarRedAleatoria(int cantidadEnrutadores) {
-    if (cantidadEnrutadores < 1 || cantidadEnrutadores > 50) {
-        throw invalid_argument("La cantidad de enrutadores debe estar entre 1 y 50.");
-    }
-
-    Red nuevaRed;
+    if (cantidadEnrutadores < 1 || cantidadEnrutadores > 50)
+        throw invalid_argument("La cantidad debe estar entre 1 y 50.");
+    Red nueva;
     for (int i = 1; i <= cantidadEnrutadores; ++i) {
         string nombre = "R" + to_string(i);
-        nuevaRed.enrutadores.emplace(nombre, Enrutador(nombre));
+        nueva.enrutadores.emplace(nombre, Enrutador(nombre));
     }
-
-    mt19937 generador(random_device{}());
+    mt19937 rng(random_device{}());
     uniform_int_distribution<int> costos(1, 20);
-    uniform_int_distribution<int> probabilidad(1, 100);
-
-    // Un arbol inicial garantiza que todos los enrutadores queden conectados.
+    uniform_int_distribution<int> extra(1, 100);
     for (int i = 2; i <= cantidadEnrutadores; ++i) {
         uniform_int_distribution<int> anterior(1, i - 1);
-        string a = "R" + to_string(i);
-        string b = "R" + to_string(anterior(generador));
-        int costo = costos(generador);
-        nuevaRed.enrutadores.at(a).agregarVecino(b, costo);
-        nuevaRed.enrutadores.at(b).agregarVecino(a, costo);
+        string a = "R" + to_string(i), b = "R" + to_string(anterior(rng));
+        int costo = costos(rng);
+        nueva.enrutadores.at(a).agregarVecino(b, costo);
+        nueva.enrutadores.at(b).agregarVecino(a, costo);
     }
-
-    // Agregar enlaces adicionales con probabilidad del 25%.
     for (int i = 1; i <= cantidadEnrutadores; ++i) {
         for (int j = i + 1; j <= cantidadEnrutadores; ++j) {
-            string a = "R" + to_string(i);
-            string b = "R" + to_string(j);
-            if (!nuevaRed.enrutadores.at(a).obtenerVecinos().count(b) &&
-                probabilidad(generador) <= 25) {
-                int costo = costos(generador);
-                nuevaRed.enrutadores.at(a).agregarVecino(b, costo);
-                nuevaRed.enrutadores.at(b).agregarVecino(a, costo);
+            string a = "R" + to_string(i), b = "R" + to_string(j);
+            if (!nueva.enrutadores.at(a).obtenerVecinos().count(b) && extra(rng) <= 25) {
+                int costo = costos(rng);
+                nueva.enrutadores.at(a).agregarVecino(b, costo);
+                nueva.enrutadores.at(b).agregarVecino(a, costo);
             }
         }
     }
-
-    nuevaRed.actualizarTablas();
-    enrutadores.swap(nuevaRed.enrutadores);
+    nueva.actualizarTablas();
+    enrutadores.swap(nueva.enrutadores);
 }
