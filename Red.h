@@ -4,7 +4,7 @@
 #include <string>
 #include <map>
 #include <vector>
-#include "enrutador.h"
+#include "Enrutador.h"
 
 class Red {
 private:
@@ -40,6 +40,7 @@ public:
     void calcularRutasDesde(const std::string& origen) const;
 
     void cargarDesdeArchivo(const std::string& nombreArchivo);
+    void generarRedAleatoria(int cantidadEnrutadores);
     bool existeEnrutador(const std::string& nombre) const;
 };
 

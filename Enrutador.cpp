@@ -1,6 +1,8 @@
-#include "enrutador.h"
+#include "Enrutador.h"
 #include <iostream>
 #include <climits>
+#include <stdexcept>
+#include <stdexcept>
 
 using namespace std;
 

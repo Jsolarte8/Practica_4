@@ -1,5 +1,6 @@
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 #include "Red.h"
 
 using namespace std;
@@ -23,7 +24,8 @@ void mostrarMenu() {
     cout << "10. Calcular todas las rutas desde un enrutador\n";
     cout << "11. Mostrar todas las tablas de la red\n";
     cout << "12. Cargar topologia desde archivo\n";
-    cout << "13. Salir\n";
+    cout << "13. Generar red aleatoria\n";
+    cout << "14. Salir\n";
     cout << "Seleccione una opcion: ";
 }
 
@@ -37,6 +39,7 @@ int main() {
         mostrarMenu();
         cin >> opcion;
 
+        if (cin.eof()) break;
         if (cin.fail()) {
             limpiarEntrada();
             cout << "Error: debe ingresar un numero.\n";
@@ -150,7 +153,19 @@ int main() {
                 cout << "Topologia cargada correctamente.\n";
                 break;
 
-            case 13:
+            case 13: {
+                int cantidad;
+                cout << "Cantidad de enrutadores (1-50): ";
+                if (!(cin >> cantidad)) {
+                    if (cin.eof()) return 0;
+                    limpiarEntrada();
+                    throw invalid_argument("Cantidad invalida.");
+                }
+                red.generarRedAleatoria(cantidad);
+                cout << "Red aleatoria conectada generada.\n";
+                break;
+            }
+            case 14:
                 cout << "Saliendo del programa...\n";
                 break;
 
@@ -167,7 +182,7 @@ int main() {
             cout << "Excepcion general: " << e.what() << endl;
         }
 
-    } while (opcion != 13);
+    } while (opcion != 14);
 
     return 0;
 }
