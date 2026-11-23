@@ -4,6 +4,9 @@
 #include <sstream>
 #include <climits>
 #include <algorithm>
+#include <random>
+#include <stdexcept>
+#include <utility>
 
 using namespace std;
 
@@ -51,8 +54,8 @@ void Red::conectar(const string& origen, const string& destino, int costo) {
         throw invalid_argument("No se puede conectar un enrutador consigo mismo.");
     }
 
-    if (costo < 0) {
-        throw invalid_argument("El costo del enlace no puede ser negativo.");
+    if (costo < 0 || costo == INT_MAX) {
+        throw invalid_argument("El costo del enlace debe estar entre 0 e INT_MAX-1.");
     }
 
     if (!existeEnrutador(origen)) {
@@ -122,6 +125,7 @@ map<string, int> Red::calcularDistanciasDesde(
             int costoEnlace = vecino.second;
 
             if (distancias[actual] != INT_MAX &&
+                costoEnlace <= INT_MAX - distancias[actual] &&
                 distancias[actual] + costoEnlace < distancias[destino]) {
 
                 distancias[destino] = distancias[actual] + costoEnlace;
@@ -322,64 +326,100 @@ void Red::calcularRutasDesde(const string& origen) const {
 
 void Red::cargarDesdeArchivo(const string& nombreArchivo) {
     ifstream archivo(nombreArchivo);
-
     if (!archivo.is_open()) {
         throw runtime_error("No se pudo abrir el archivo de topologia.");
     }
 
-    enrutadores.clear();
-
+    // Preparar la nueva topologia sin modificar la red actual si falla la lectura.
+    Red nuevaRed;
     string linea;
+    int numeroLinea = 0;
 
     while (getline(archivo, linea)) {
-        if (linea.empty()) {
+        ++numeroLinea;
+        stringstream ss(linea);
+        string tipo;
+        if (!(ss >> tipo) || tipo[0] == '#') {
             continue;
         }
 
-        stringstream ss(linea);
-        string tipo;
-        ss >> tipo;
-
         if (tipo == "ROUTER") {
-            string nombre;
-            ss >> nombre;
-
-            if (nombre.empty()) {
-                throw invalid_argument("Linea ROUTER invalida en el archivo.");
+            string nombre, extra;
+            if (!(ss >> nombre) || (ss >> extra)) {
+                throw invalid_argument("ROUTER invalido en linea " + to_string(numeroLinea));
             }
-
-            if (!existeEnrutador(nombre)) {
-                enrutadores[nombre] = Enrutador(nombre);
+            if (!nuevaRed.existeEnrutador(nombre)) {
+                nuevaRed.enrutadores.emplace(nombre, Enrutador(nombre));
             }
         } else if (tipo == "ENLACE") {
-            string origen, destino;
+            string origen, destino, extra;
             int costo;
-
-            ss >> origen >> destino >> costo;
-
-            if (origen.empty() || destino.empty()) {
-                throw invalid_argument("Linea ENLACE invalida en el archivo.");
+            if (!(ss >> origen >> destino >> costo) || (ss >> extra)) {
+                throw invalid_argument("ENLACE invalido en linea " + to_string(numeroLinea));
             }
-
-            if (costo < 0) {
-                throw invalid_argument("El archivo contiene un costo negativo.");
+            if (origen == destino || costo < 0 || costo == INT_MAX) {
+                throw invalid_argument("Enlace o costo invalido en linea " + to_string(numeroLinea));
             }
-
-            if (!existeEnrutador(origen)) {
-                enrutadores[origen] = Enrutador(origen);
+            if (!nuevaRed.existeEnrutador(origen)) {
+                nuevaRed.enrutadores.emplace(origen, Enrutador(origen));
             }
-
-            if (!existeEnrutador(destino)) {
-                enrutadores[destino] = Enrutador(destino);
+            if (!nuevaRed.existeEnrutador(destino)) {
+                nuevaRed.enrutadores.emplace(destino, Enrutador(destino));
             }
-
-            enrutadores[origen].agregarVecino(destino, costo);
-            enrutadores[destino].agregarVecino(origen, costo);
+            nuevaRed.enrutadores.at(origen).agregarVecino(destino, costo);
+            nuevaRed.enrutadores.at(destino).agregarVecino(origen, costo);
         } else {
-            throw invalid_argument("Tipo de linea desconocido en el archivo: " + tipo);
+            throw invalid_argument("Tipo desconocido en linea " + to_string(numeroLinea) + ": " + tipo);
         }
     }
 
-    archivo.close();
-    actualizarTablas();
+    if (archivo.bad()) {
+        throw runtime_error("Error de lectura del archivo de topologia.");
+    }
+
+    nuevaRed.actualizarTablas();
+    enrutadores.swap(nuevaRed.enrutadores);
+}
+
+void Red::generarRedAleatoria(int cantidadEnrutadores) {
+    if (cantidadEnrutadores < 1 || cantidadEnrutadores > 50) {
+        throw invalid_argument("La cantidad de enrutadores debe estar entre 1 y 50.");
+    }
+
+    Red nuevaRed;
+    for (int i = 1; i <= cantidadEnrutadores; ++i) {
+        string nombre = "R" + to_string(i);
+        nuevaRed.enrutadores.emplace(nombre, Enrutador(nombre));
+    }
+
+    mt19937 generador(random_device{}());
+    uniform_int_distribution<int> costos(1, 20);
+    uniform_int_distribution<int> probabilidad(1, 100);
+
+    // Un arbol inicial garantiza que todos los enrutadores queden conectados.
+    for (int i = 2; i <= cantidadEnrutadores; ++i) {
+        uniform_int_distribution<int> anterior(1, i - 1);
+        string a = "R" + to_string(i);
+        string b = "R" + to_string(anterior(generador));
+        int costo = costos(generador);
+        nuevaRed.enrutadores.at(a).agregarVecino(b, costo);
+        nuevaRed.enrutadores.at(b).agregarVecino(a, costo);
+    }
+
+    // Agregar enlaces adicionales con probabilidad del 25%.
+    for (int i = 1; i <= cantidadEnrutadores; ++i) {
+        for (int j = i + 1; j <= cantidadEnrutadores; ++j) {
+            string a = "R" + to_string(i);
+            string b = "R" + to_string(j);
+            if (!nuevaRed.enrutadores.at(a).obtenerVecinos().count(b) &&
+                probabilidad(generador) <= 25) {
+                int costo = costos(generador);
+                nuevaRed.enrutadores.at(a).agregarVecino(b, costo);
+                nuevaRed.enrutadores.at(b).agregarVecino(a, costo);
+            }
+        }
+    }
+
+    nuevaRed.actualizarTablas();
+    enrutadores.swap(nuevaRed.enrutadores);
 }
